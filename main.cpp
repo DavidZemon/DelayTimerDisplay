@@ -35,10 +35,15 @@ static const unsigned int MINIMUM_DELAY_MILLIS     = 100;
 static const unsigned int MAXIMUM_DELAY_MILLIS     = 50000;
 static const unsigned int ADJUSTMENT_VALUE         = 100;
 static const unsigned int DELAY_WIGGLE_ROOM_MICROS = 500;
+static const unsigned int DEBOUNCE_DELAY_MILLIS    = 2;
 
 class RelayActivator {
     public:
+#ifdef DEBUG
+        static const char FORM_FEED = '\n';
+#else
         static const char FORM_FEED = 12;
+#endif
 
     public:
         RelayActivator ()
@@ -49,8 +54,7 @@ class RelayActivator {
                   m_decrement(DECREMENT_BUTTON_MASK, Pin::Dir::IN),
                   m_statusLed(LED_OUT_MASK, WS2812::Type::GRB),
                   m_uart(SERIAL_OUT_MASK),
-                  m_printer(this->m_uart, false),
-                  m_delayMillis(DEFAULT_DELAY_MILLIS) {
+                  m_printer(this->m_uart, false) {
             this->m_relayOutput.clear();
             this->m_uart.set_baud_rate(SERIAL_BAUD_RATE);
         }
@@ -61,18 +65,25 @@ class RelayActivator {
             this->updateDefaultDelay(this->m_delayMillis);
 
             while (1) {
-                if (this->m_relayInput.read())
+                if (!this->m_relayInput.read()) {
                     this->activateRelay();
+                    this->debounce(this->m_relayInput);
+                }
 
-                if (this->m_increment.read())
+                if (!this->m_increment.read()) {
                     this->updateDefaultDelay(this->m_delayMillis + ADJUSTMENT_VALUE);
+                    this->debounce(this->m_increment);
+                }
 
-                if (this->m_decrement.read())
+                if (!this->m_decrement.read()) {
                     this->updateDefaultDelay(this->m_delayMillis - ADJUSTMENT_VALUE);
+                    this->debounce(this->m_decrement);
+                }
+
             }
         }
 
-        void verifyEeprom() const {
+        void verifyEeprom () const {
             bool eepromAck;
             do {
                 eepromAck = this->m_eeprom.ping();
@@ -84,11 +95,13 @@ class RelayActivator {
 #ifdef DEBUG
                     this->m_printer << '\n';
 #endif
-                    waitcnt(CNT + 100*MILLISECOND);
+                    waitcnt(CNT + 100 * MILLISECOND);
                 }
             } while (!eepromAck);
-        }
 
+            this->m_eeprom.get((uint16_t) (uint32_t) &DEFAULT_DELAY_MILLIS, (uint8_t *) &this->m_delayMillis,
+                               sizeof(this->m_delayMillis));
+                    }
         void activateRelay () const {
             this->m_statusLed.send(ACTIVE_COLOR);
             this->m_relayOutput.set();
@@ -96,7 +109,7 @@ class RelayActivator {
             const auto minTimeoutValue = timeoutValue - DELAY_WIGGLE_ROOM_MICROS * MICROSECOND;
             const auto maxTimeoutValue = timeoutValue + DELAY_WIGGLE_ROOM_MICROS * MICROSECOND;
             auto       timedOut        = false;
-            while (!this->m_cancelInput.read() && !timedOut) {
+            while (this->m_cancelInput.read() && !timedOut) {
                 timedOut &= (CNT - minTimeoutValue) <= DELAY_WIGGLE_ROOM_MICROS;
                 timedOut &= (maxTimeoutValue - CNT) <= DELAY_WIGGLE_ROOM_MICROS;
             }
@@ -136,14 +149,20 @@ class RelayActivator {
         void blinkLed (const unsigned int color) const {
             for (unsigned int i = 0; i < 5; ++i) {
                 this->m_statusLed.send(color);
-                waitcnt(CNT * 100 * MILLISECOND);
+                waitcnt(CNT + 100 * MILLISECOND);
                 this->m_statusLed.send(WS2812::BLACK);
-                waitcnt(CNT * 100 * MILLISECOND);
+                waitcnt(CNT + 100 * MILLISECOND);
             }
             this->m_statusLed.send(INACTIVE_COLOR);
         }
 
+        static void debounce (const Pin &pin) {
+            waitcnt(CNT + DEBOUNCE_DELAY_MILLIS * MILLISECOND);
+            while (!pin.read());
+        }
+
     protected:
+        unsigned int  m_delayMillis;
         const Eeprom  m_eeprom;
         const Pin     m_relayOutput;
         const Pin     m_relayInput;
@@ -153,7 +172,6 @@ class RelayActivator {
         const WS2812  m_statusLed;
         UARTTX        m_uart;
         const Printer m_printer;
-        unsigned int  m_delayMillis;
 };
 
 int main () {
