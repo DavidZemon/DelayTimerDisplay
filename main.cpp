@@ -9,6 +9,8 @@ using PropWare::WS2812;
 using PropWare::Eeprom;
 using PropWare::Pin;
 
+static const bool ACTIVE_BUTTON_STATE = false;
+
 static const Pin::Mask RELAY_OUTPUT_MASK     = Pin::Mask::P0;
 static const Pin::Mask RELAY_INPUT_MASK      = Pin::Mask::P1;
 static const Pin::Mask CANCEL_INPUT_MASK     = Pin::Mask::P2;
@@ -35,7 +37,7 @@ static const unsigned int MINIMUM_DELAY_MILLIS     = 100;
 static const unsigned int MAXIMUM_DELAY_MILLIS     = 50000;
 static const unsigned int ADJUSTMENT_VALUE         = 100;
 static const unsigned int DELAY_WIGGLE_ROOM_MICROS = 500;
-static const unsigned int DEBOUNCE_DELAY_MILLIS    = 2;
+static const unsigned int DEBOUNCE_DELAY_MILLIS    = 10;
 
 class RelayActivator {
     public:
@@ -65,17 +67,17 @@ class RelayActivator {
             this->updateDefaultDelay(this->m_delayMillis);
 
             while (1) {
-                if (!this->m_relayInput.read()) {
+                if (ACTIVE_BUTTON_STATE == this->m_relayInput.read()) {
                     this->activateRelay();
                     this->debounce(this->m_relayInput);
                 }
 
-                if (!this->m_increment.read()) {
+                if (ACTIVE_BUTTON_STATE == this->m_increment.read()) {
                     this->updateDefaultDelay(this->m_delayMillis + ADJUSTMENT_VALUE);
                     this->debounce(this->m_increment);
                 }
 
-                if (!this->m_decrement.read()) {
+                if (ACTIVE_BUTTON_STATE == this->m_decrement.read()) {
                     this->updateDefaultDelay(this->m_delayMillis - ADJUSTMENT_VALUE);
                     this->debounce(this->m_decrement);
                 }
@@ -88,20 +90,15 @@ class RelayActivator {
             do {
                 eepromAck = this->m_eeprom.ping();
                 if (!eepromAck) {
-#ifndef DEBUG
-                    this->m_printer << FORM_FEED;
-#endif
-                    this->m_printer << "Unable to ping EEPROM";
-#ifdef DEBUG
-                    this->m_printer << '\n';
-#endif
+                    this->m_printer << FORM_FEED << "Unable to ping EEPROM";
                     waitcnt(CNT + 100 * MILLISECOND);
                 }
             } while (!eepromAck);
 
             this->m_eeprom.get((uint16_t) (uint32_t) &DEFAULT_DELAY_MILLIS, (uint8_t *) &this->m_delayMillis,
                                sizeof(this->m_delayMillis));
-                    }
+        }
+
         void activateRelay () const {
             this->m_statusLed.send(ACTIVE_COLOR);
             this->m_relayOutput.set();
@@ -109,13 +106,13 @@ class RelayActivator {
             const auto minTimeoutValue = timeoutValue - DELAY_WIGGLE_ROOM_MICROS * MICROSECOND;
             const auto maxTimeoutValue = timeoutValue + DELAY_WIGGLE_ROOM_MICROS * MICROSECOND;
             auto       timedOut        = false;
-            while (this->m_cancelInput.read() && !timedOut) {
-                timedOut &= (CNT - minTimeoutValue) <= DELAY_WIGGLE_ROOM_MICROS;
-                timedOut &= (maxTimeoutValue - CNT) <= DELAY_WIGGLE_ROOM_MICROS;
+            while (ACTIVE_BUTTON_STATE != this->m_cancelInput.read() && !timedOut) {
+                timedOut |= (CNT - minTimeoutValue) <= DELAY_WIGGLE_ROOM_MICROS;
+                timedOut |= (maxTimeoutValue - CNT) <= DELAY_WIGGLE_ROOM_MICROS;
             }
             this->m_relayOutput.clear();
 
-            if (this->m_cancelInput.read())
+            if (ACTIVE_BUTTON_STATE == this->m_cancelInput.read())
                 this->blinkLed(ERROR_COLOR);
 
             this->m_statusLed.send(INACTIVE_COLOR);
@@ -158,7 +155,7 @@ class RelayActivator {
 
         static void debounce (const Pin &pin) {
             waitcnt(CNT + DEBOUNCE_DELAY_MILLIS * MILLISECOND);
-            while (!pin.read());
+            while (ACTIVE_BUTTON_STATE == pin.read());
         }
 
     protected:

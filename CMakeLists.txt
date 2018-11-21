@@ -3,6 +3,6 @@ find_package(PropWare 3.0 REQUIRED)
 
 project(DelayTimerDisplay)
 
-set(MODEL cmm)
+set(MODEL lmm)
 create_simple_executable(DelayTimerDisplay main.cpp)
 target_compile_definitions(DelayTimerDisplay PUBLIC DEBUG)
