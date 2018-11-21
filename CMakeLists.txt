@@ -5,4 +5,4 @@ project(DelayTimerDisplay)
 
 set(MODEL cmm)
 create_simple_executable(DelayTimerDisplay main.cpp)
-#target_compile_definitions(DelayTimerDisplay PUBLIC DEBUG)
+target_compile_definitions(DelayTimerDisplay PUBLIC DEBUG)

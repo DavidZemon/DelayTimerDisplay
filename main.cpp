@@ -16,8 +16,8 @@ static const Pin::Mask INCREMENT_BUTTON_MASK = Pin::Mask::P3;
 static const Pin::Mask DECREMENT_BUTTON_MASK = Pin::Mask::P4;
 
 #ifdef DEBUG
-static const Pin::Mask    SERIAL_OUT_MASK  = Pin::to_mask(_cfg_txpin);
-static const unsigned int SERIAL_BAUD_RATE = _cfg_baudrate;
+static const Pin::Mask SERIAL_OUT_MASK  = Pin::to_mask(static_cast<const uint8_t>(_cfg_txpin));
+static const int       SERIAL_BAUD_RATE = _cfg_baudrate;
 #else
 static const Pin::Mask    SERIAL_OUT_MASK  = Pin::Mask::P5;
 static const unsigned int SERIAL_BAUD_RATE = 19200;
@@ -49,38 +49,57 @@ class RelayActivator {
                   m_decrement(DECREMENT_BUTTON_MASK, Pin::Dir::IN),
                   m_statusLed(LED_OUT_MASK, WS2812::Type::GRB),
                   m_uart(SERIAL_OUT_MASK),
-                  m_printer(this->m_uart, false) {
+                  m_printer(this->m_uart, false),
+                  m_delayMillis(DEFAULT_DELAY_MILLIS) {
             this->m_relayOutput.clear();
             this->m_uart.set_baud_rate(SERIAL_BAUD_RATE);
         }
 
-        void run () const {
-            unsigned int delayMillis = DEFAULT_DELAY_MILLIS;
+        void run () {
+            this->verifyEeprom();
+
+            this->updateDefaultDelay(this->m_delayMillis);
 
             while (1) {
-                if (this->m_relayInput.read()) {
-                    this->activateRelay(delayMillis);
-                }
+                if (this->m_relayInput.read())
+                    this->activateRelay();
 
-                if (this->m_increment.read()) {
-                    delayMillis += ADJUSTMENT_VALUE;
-                    this->updateDefaultDelay(delayMillis);
-                }
+                if (this->m_increment.read())
+                    this->updateDefaultDelay(this->m_delayMillis + ADJUSTMENT_VALUE);
 
-                if (this->m_decrement.read()) {
-                    delayMillis -= ADJUSTMENT_VALUE;
-                    this->updateDefaultDelay(delayMillis);
-                }
+                if (this->m_decrement.read())
+                    this->updateDefaultDelay(this->m_delayMillis - ADJUSTMENT_VALUE);
             }
         }
 
-        void activateRelay (const unsigned int delayMillis) const {
+        void verifyEeprom() const {
+            bool eepromAck;
+            do {
+                eepromAck = this->m_eeprom.ping();
+                if (!eepromAck) {
+#ifndef DEBUG
+                    this->m_printer << FORM_FEED;
+#endif
+                    this->m_printer << "Unable to ping EEPROM";
+#ifdef DEBUG
+                    this->m_printer << '\n';
+#endif
+                    waitcnt(CNT + 100*MILLISECOND);
+                }
+            } while (!eepromAck);
+        }
+
+        void activateRelay () const {
             this->m_statusLed.send(ACTIVE_COLOR);
             this->m_relayOutput.set();
-            const auto timeoutValue    = CNT + delayMillis * MILLISECOND;
+            const auto timeoutValue    = CNT + this->m_delayMillis * MILLISECOND;
             const auto minTimeoutValue = timeoutValue - DELAY_WIGGLE_ROOM_MICROS * MICROSECOND;
             const auto maxTimeoutValue = timeoutValue + DELAY_WIGGLE_ROOM_MICROS * MICROSECOND;
-            while (!this->m_cancelInput.read() && minTimeoutValue < CNT && CNT < maxTimeoutValue);
+            auto       timedOut        = false;
+            while (!this->m_cancelInput.read() && !timedOut) {
+                timedOut &= (CNT - minTimeoutValue) <= DELAY_WIGGLE_ROOM_MICROS;
+                timedOut &= (maxTimeoutValue - CNT) <= DELAY_WIGGLE_ROOM_MICROS;
+            }
             this->m_relayOutput.clear();
 
             if (this->m_cancelInput.read())
@@ -89,17 +108,29 @@ class RelayActivator {
             this->m_statusLed.send(INACTIVE_COLOR);
         }
 
-        void updateDefaultDelay (const unsigned int delayMillis) const {
+        void updateDefaultDelay (const unsigned int delayMillis) {
             if (MINIMUM_DELAY_MILLIS <= delayMillis && delayMillis <= MAXIMUM_DELAY_MILLIS) {
                 // Double cast necessary to avoid `-f permissive` error
-                this->m_eeprom.put((uint16_t) (uint32_t) &DEFAULT_DELAY_MILLIS, (uint8_t *) &delayMillis,
-                                   sizeof(delayMillis));
-
-                const unsigned int delaySeconds = delayMillis / 1000;
-                const unsigned int delayTenths  = (delayMillis % 1000) / 100;
-                this->m_printer << FORM_FEED << delaySeconds << '.' << delayTenths << 's';
-            } else
+                if (this->m_eeprom.put((uint16_t) (uint32_t) &DEFAULT_DELAY_MILLIS, (uint8_t *) &delayMillis,
+                                       sizeof(delayMillis))) {
+                    this->m_delayMillis = delayMillis;
+                    this->printCurrentDelay();
+                } else {
+                    this->m_printer << FORM_FEED << "EEPROM error!";
+                    this->blinkLed(ERROR_COLOR);
+                    this->printCurrentDelay();
+                }
+            } else {
+                this->m_printer << FORM_FEED << "OUT OF RANGE";
                 this->blinkLed(WARNING_COLOR);
+                this->printCurrentDelay();
+            }
+        }
+
+        void printCurrentDelay () const {
+            const unsigned int delaySeconds = this->m_delayMillis / 1000;
+            const unsigned int delayTenths  = (this->m_delayMillis % 1000) / 100;
+            this->m_printer << FORM_FEED << delaySeconds << '.' << delayTenths << 's';
         }
 
         void blinkLed (const unsigned int color) const {
@@ -122,10 +153,11 @@ class RelayActivator {
         const WS2812  m_statusLed;
         UARTTX        m_uart;
         const Printer m_printer;
+        unsigned int  m_delayMillis;
 };
 
 int main () {
-    const RelayActivator relayActivator;
+    RelayActivator relayActivator;
     relayActivator.run();
     return 0;
 }
