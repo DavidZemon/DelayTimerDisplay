@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.11)
 find_package(PropWare 3.0 REQUIRED)
+set(CMAKE_EXECUTABLE_SUFFIX ".elf")
 
 project(DelayTimerDisplay)
 
