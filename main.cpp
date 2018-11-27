@@ -32,12 +32,13 @@ static const unsigned int INACTIVE_COLOR = WS2812::to_color(0, LED_INTENSITY, 0)
 static const unsigned int WARNING_COLOR  = WS2812::to_color(LED_INTENSITY, LED_INTENSITY, 0);
 static const unsigned int ERROR_COLOR    = WS2812::to_color(LED_INTENSITY, 0, LED_INTENSITY);
 
-static const unsigned int DEFAULT_DELAY_MILLIS     = 7500;
-static const unsigned int MINIMUM_DELAY_MILLIS     = 100;
-static const unsigned int MAXIMUM_DELAY_MILLIS     = 50000;
-static const unsigned int ADJUSTMENT_VALUE         = 100;
-static const unsigned int DELAY_WIGGLE_ROOM_MICROS = 500;
-static const unsigned int DEBOUNCE_DELAY_MILLIS    = 10;
+static const unsigned int DEFAULT_DELAY_MILLIS       = 7500;
+static const unsigned int MINIMUM_DELAY_MILLIS       = 100;
+static const unsigned int MAXIMUM_DELAY_MILLIS       = 50000;
+static const unsigned int ADJUSTMENT_VALUE           = 100;
+static const unsigned int DELAY_WIGGLE_ROOM_MICROS   = 500;
+static const unsigned int DEBOUNCE_DOWN_DELAY_MILLIS = 10;
+static const unsigned int DEBOUNCE_UP_DELAY_MILLIS   = 100;
 
 class RelayActivator {
     public:
@@ -159,8 +160,9 @@ class RelayActivator {
         }
 
         static void debounce (const Pin &pin) {
-            waitcnt(CNT + DEBOUNCE_DELAY_MILLIS * MILLISECOND);
+            waitcnt(CNT + DEBOUNCE_DOWN_DELAY_MILLIS * MILLISECOND);
             while (ACTIVE_BUTTON_STATE == pin.read());
+            waitcnt(CNT + DEBOUNCE_UP_DELAY_MILLIS * MILLISECOND);
         }
 
     protected:
