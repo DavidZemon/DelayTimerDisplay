@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.11)
+cmake_minimum_required(VERSION 3.3)
 find_package(PropWare 3.0 REQUIRED)
 
 set(CMAKE_EXECUTABLE_SUFFIX ".elf")

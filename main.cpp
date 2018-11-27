@@ -64,13 +64,12 @@ class RelayActivator {
         }
 
         void run () {
-            this->verifyEeprom();
-
 #ifndef DEBUG
             this->m_printer.put_char(ENABLE_LED_BACKLIGHT);
 #endif
-
+            this->verifyEeprom();
             this->updateDefaultDelay(this->m_delayMillis);
+            this->m_statusLed.send(INACTIVE_COLOR);
 
             while (1) {
                 if (ACTIVE_BUTTON_STATE == this->m_relayInput.read()) {
@@ -146,7 +145,7 @@ class RelayActivator {
         void printCurrentDelay () const {
             const unsigned int delaySeconds = this->m_delayMillis / 1000;
             const unsigned int delayTenths  = (this->m_delayMillis % 1000) / 100;
-            this->m_printer << FORM_FEED << delaySeconds << '.' << delayTenths << " seconds";
+            this->m_printer << FORM_FEED << delaySeconds << '.' << delayTenths << " Seconds";
         }
 
         void blinkLed (const unsigned int color) const {
