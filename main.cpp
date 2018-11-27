@@ -26,7 +26,7 @@ static const unsigned int SERIAL_BAUD_RATE = 19200;
 #endif
 
 static const Pin::Mask    LED_OUT_MASK   = Pin::Mask::P6;
-static const uint8_t      LED_INTENSITY  = 10;
+static const uint8_t      LED_INTENSITY  = 127;
 static const unsigned int ACTIVE_COLOR   = WS2812::to_color(LED_INTENSITY, 0, 0);
 static const unsigned int INACTIVE_COLOR = WS2812::to_color(0, LED_INTENSITY, 0);
 static const unsigned int WARNING_COLOR  = WS2812::to_color(LED_INTENSITY, LED_INTENSITY, 0);
@@ -44,7 +44,8 @@ class RelayActivator {
 #ifdef DEBUG
         static const char FORM_FEED = '\n';
 #else
-        static const char FORM_FEED = 12;
+        static const char FORM_FEED            = 12;
+        static const char ENABLE_LED_BACKLIGHT = 17;
 #endif
 
     public:
@@ -63,6 +64,10 @@ class RelayActivator {
 
         void run () {
             this->verifyEeprom();
+
+#ifndef DEBUG
+            this->m_printer.put_char(ENABLE_LED_BACKLIGHT);
+#endif
 
             this->updateDefaultDelay(this->m_delayMillis);
 
@@ -140,7 +145,7 @@ class RelayActivator {
         void printCurrentDelay () const {
             const unsigned int delaySeconds = this->m_delayMillis / 1000;
             const unsigned int delayTenths  = (this->m_delayMillis % 1000) / 100;
-            this->m_printer << FORM_FEED << delaySeconds << '.' << delayTenths << 's';
+            this->m_printer << FORM_FEED << delaySeconds << '.' << delayTenths << " seconds";
         }
 
         void blinkLed (const unsigned int color) const {
